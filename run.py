@@ -17,6 +17,9 @@
 # More information about the method can be found at https://marigoldmonodepth.github.io
 # --------------------------------------------------------------------------
 
+# @GonzaloMartinGarcia
+# The following code is built upon Marigold's run.py, and was adapted to include some new settings
+# and normals estimation. All additions made are marked with a # add.
 
 import argparse
 import logging
@@ -28,9 +31,24 @@ import torch
 from PIL import Image
 from tqdm.auto import tqdm
 
+# add
 from marigold import MarigoldPipeline
+from diffusers import AutoencoderKL, DDIMScheduler, UNet2DConditionModel
+from transformers import CLIPTextModel, CLIPTokenizer
+import random
 
 EXTENSION_LIST = [".jpg", ".jpeg", ".png"]
+
+# add
+# Code is from Marigold's util/seed_all.py
+def seed_all(seed: int = 0):
+    """
+    Set random seeds of all components.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 
 if "__main__" == __name__:
@@ -43,7 +61,7 @@ if "__main__" == __name__:
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="prs-eth/marigold-lcm-v1-0",
+        default="GonzaloMG/marigold-e2e-ft-depth", # add
         help="Checkpoint path or hub name.",
     )
 
@@ -62,13 +80,13 @@ if "__main__" == __name__:
     parser.add_argument(
         "--denoise_steps",
         type=int,
-        default=None,
+        default=1,
         help="Diffusion denoising steps, more steps results in higher accuracy but slower inference speed. For the original (DDIM) version, it's recommended to use 10-50 steps, while for LCM 1-4 steps.",
     )
     parser.add_argument(
         "--ensemble_size",
         type=int,
-        default=5,
+        default=1,
         help="Number of predictions to be ensembled, more inference gives better results but runs slower.",
     )
     parser.add_argument(
@@ -82,7 +100,7 @@ if "__main__" == __name__:
     parser.add_argument(
         "--processing_res",
         type=int,
-        default=None,
+        default=768,
         help="Maximum resolution of processing. 0 for using input image resolution. Default: 768.",
     )
     parser.add_argument(
@@ -125,7 +143,33 @@ if "__main__" == __name__:
         help="Flag of running on Apple Silicon.",
     )
 
+    # add 
+    parser.add_argument(
+        "--noise",
+        type=str,
+        default='zeros',
+        choices=["gaussian", "pyramid", "zeros"],
+    )
+    parser.add_argument(
+        "--modality",
+        type=str,
+        default='depth',
+        choices=["depth", "normals"],
+    )
+    parser.add_argument(
+        "--timestep_spacing",
+        type=str,
+        default='trailing',
+        choices=["trailing", "leading"],
+    ) 
+
     args = parser.parse_args()
+
+    # add
+    noise = args.noise
+    modality = args.modality
+    timestep_spacing = args.timestep_spacing
+    normals = True if modality == 'normals' else False
 
     checkpoint_path = args.checkpoint
     input_rgb_dir = args.input_rgb_dir
@@ -133,8 +177,6 @@ if "__main__" == __name__:
 
     denoise_steps = args.denoise_steps
     ensemble_size = args.ensemble_size
-    if ensemble_size > 15:
-        logging.warning("Running with large ensemble size will be slow.")
     half_precision = args.half_precision
 
     processing_res = args.processing_res
@@ -153,13 +195,34 @@ if "__main__" == __name__:
         batch_size = 1  # set default batchsize
 
     # -------------------- Preparation --------------------
-    # Output directories
-    output_dir_color = os.path.join(output_dir, "depth_colored")
-    output_dir_tif = os.path.join(output_dir, "depth_bw")
-    output_dir_npy = os.path.join(output_dir, "depth_npy")
+    # Print out config
+    logging.info(
+        f"Inference settings: checkpoint = `{checkpoint_path}`, "
+        f"with denoise_steps = {denoise_steps}, ensemble_size = {ensemble_size}, "
+        f"processing resolution = {processing_res}, seed = {seed}; "
+        f"color_map = {color_map}."
+    )
+
+    # Random seed
+    if seed is None:
+        import time
+
+        seed = int(time.time())
+    seed_all(seed)
+
+    # Output directory
     os.makedirs(output_dir, exist_ok=True)
+    if modality == 'normals':
+        # add
+        output_dir_color = os.path.join(output_dir, "normal_colored")
+        output_dir_npy = os.path.join(output_dir, "normal_npy")
+    else:
+        output_dir_color = os.path.join(output_dir, "depth_colored")
+        output_dir_npy = os.path.join(output_dir, "depth_npy")
+        output_dir_tif = os.path.join(output_dir, "depth_bw")
+        os.makedirs(output_dir_tif, exist_ok=True)
+    
     os.makedirs(output_dir_color, exist_ok=True)
-    os.makedirs(output_dir_tif, exist_ok=True)
     os.makedirs(output_dir_npy, exist_ok=True)
     logging.info(f"output dir = {output_dir}")
 
@@ -202,9 +265,23 @@ if "__main__" == __name__:
         dtype = torch.float32
         variant = None
 
-    pipe: MarigoldPipeline = MarigoldPipeline.from_pretrained(
-        checkpoint_path, variant=variant, torch_dtype=dtype
-    )
+    # add
+    # load Model
+    logging.info(f"Loading Model: {checkpoint_path}")
+    unet         = UNet2DConditionModel.from_pretrained(checkpoint_path, subfolder="unet")   
+    vae          = AutoencoderKL.from_pretrained(checkpoint_path, subfolder="vae")  
+    text_encoder = CLIPTextModel.from_pretrained(checkpoint_path, subfolder="text_encoder")  
+    tokenizer    = CLIPTokenizer.from_pretrained(checkpoint_path, subfolder="tokenizer") 
+    scheduler    = DDIMScheduler.from_pretrained(checkpoint_path, timestep_spacing=timestep_spacing, subfolder="scheduler") 
+    pipe = MarigoldPipeline.from_pretrained(pretrained_model_name_or_path = checkpoint_path,
+                                            unet=unet, 
+                                            vae=vae, 
+                                            scheduler=scheduler, 
+                                            text_encoder=text_encoder, 
+                                            tokenizer=tokenizer, 
+                                            variant=variant, 
+                                            torch_dtype=dtype, 
+                                            )
 
     try:
         pipe.enable_xformers_memory_efficient_attention()
@@ -212,19 +289,7 @@ if "__main__" == __name__:
         pass  # run without xformers
 
     pipe = pipe.to(device)
-    logging.info(
-        f"scale_invariant: {pipe.scale_invariant}, shift_invariant: {pipe.shift_invariant}"
-    )
-
-    # Print out config
-    logging.info(
-        f"Inference settings: checkpoint = `{checkpoint_path}`, "
-        f"with denoise_steps = {denoise_steps or pipe.default_denoising_steps}, "
-        f"ensemble_size = {ensemble_size}, "
-        f"processing resolution = {processing_res or pipe.default_processing_resolution}, "
-        f"seed = {seed}; "
-        f"color_map = {color_map}."
-    )
+    pipe.unet.eval()
 
     # -------------------- Inference and saving --------------------
     with torch.no_grad():
@@ -234,14 +299,7 @@ if "__main__" == __name__:
             # Read input image
             input_image = Image.open(rgb_path)
 
-            # Random number generator
-            if seed is None:
-                generator = None
-            else:
-                generator = torch.Generator(device=device)
-                generator.manual_seed(seed)
-
-            # Predict depth
+            # Predict depth or normals
             pipe_out = pipe(
                 input_image,
                 denoising_steps=denoise_steps,
@@ -250,30 +308,26 @@ if "__main__" == __name__:
                 match_input_res=match_input_res,
                 batch_size=batch_size,
                 color_map=color_map,
-                show_progress_bar=True,
+                show_progress_bar=True, 
                 resample_method=resample_method,
-                generator=generator,
+                # add
+                normals     = normals,
+                noise     = noise,
             )
 
-            depth_pred: np.ndarray = pipe_out.depth_np
-            depth_colored: Image.Image = pipe_out.depth_colored
+            # add
+            pred: np.ndarray = pipe_out.normal_np if normals else pipe_out.depth_np
+            pred_colored: Image.Image = pipe_out.normal_colored if normals else pipe_out.depth_colored
 
-            # Save as npy
+            # Save prediction as npy
             rgb_name_base = os.path.splitext(os.path.basename(rgb_path))[0]
             pred_name_base = rgb_name_base + "_pred"
             npy_save_path = os.path.join(output_dir_npy, f"{pred_name_base}.npy")
             if os.path.exists(npy_save_path):
                 logging.warning(f"Existing file: '{npy_save_path}' will be overwritten")
-            np.save(npy_save_path, depth_pred)
+            np.save(npy_save_path, pred)
 
-            # Save as 16-bit uint png
-            depth_to_save = (depth_pred * 65535.0).astype(np.uint16)
-            png_save_path = os.path.join(output_dir_tif, f"{pred_name_base}.png")
-            if os.path.exists(png_save_path):
-                logging.warning(f"Existing file: '{png_save_path}' will be overwritten")
-            Image.fromarray(depth_to_save).save(png_save_path, mode="I;16")
-
-            # Colorize
+            # Save prediction as colorized image
             colored_save_path = os.path.join(
                 output_dir_color, f"{pred_name_base}_colored.png"
             )
@@ -281,4 +335,13 @@ if "__main__" == __name__:
                 logging.warning(
                     f"Existing file: '{colored_save_path}' will be overwritten"
                 )
-            depth_colored.save(colored_save_path)
+            pred_colored.save(colored_save_path)
+
+            if not normals:
+                 # Save depth as 16-bit uint grey scale png
+                depth_to_save = (pred * 65535.0).astype(np.uint16)
+                png_save_path = os.path.join(output_dir_tif, f"{pred_name_base}.png")
+                if os.path.exists(png_save_path):
+                    logging.warning(f"Existing file: '{png_save_path}' will be overwritten")
+                Image.fromarray(depth_to_save).save(png_save_path, mode="I;16")
+
