@@ -54,6 +54,8 @@ if "__main__" == __name__:
         split_meta_df["invalid_ratio"] = np.nan
 
         for i, row in tqdm(split_meta_df.iterrows(), total=len(split_meta_df)):
+
+
             # Load data
             rgb_path = os.path.join(
                 row.scene_name,
@@ -61,6 +63,15 @@ if "__main__" == __name__:
                 f"scene_{row.camera_name}_final_hdf5",
                 f"frame.{row.frame_id:04d}.color.hdf5",
             )
+            if not os.path.exists(os.path.join(dataset_dir, rgb_path)):
+                print(f"Skipping {os.path.join(dataset_dir, rgb_path)}")
+                continue
+            else:
+                print(f"Processing {os.path.join(dataset_dir, rgb_path)}")
+
+            if not os.path.exists(os.path.join(dataset_dir, row.scene_name)):
+                print(f"Skipping for non-existent scene {row.scene_name}")
+                continue
             dist_path = os.path.join(
                 row.scene_name,
                 "images",
@@ -133,10 +144,12 @@ if "__main__" == __name__:
 
             split_meta_df.at[i, "invalid_ratio"] = invalid_ratio
 
+        # fltr = split_meta_df[split_meta_df.rgb_path is not None]
+        fltr = split_meta_df
         with open(
             os.path.join(split_output_dir, f"filename_list_{split}.txt"), "w+"
         ) as f:
-            lines = split_meta_df.apply(
+            lines = fltr.apply(
                 lambda r: f"{r['rgb_path']} {r['depth_path']}", axis=1
             ).tolist()
             f.writelines("\n".join(lines))
@@ -144,6 +157,6 @@ if "__main__" == __name__:
         with open(
             os.path.join(split_output_dir, f"filename_meta_{split}.csv"), "w+"
         ) as f:
-            split_meta_df.to_csv(f, header=True)
+            fltr.to_csv(f, header=True)
 
     print("Preprocess finished")
