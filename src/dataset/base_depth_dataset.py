@@ -98,9 +98,11 @@ class BaseDepthDataset(Dataset):
 
         # Load filenames
         with open(self.filename_ls_path, "r") as f:
+            print(f"opened: {self.filename_ls_path}")
             self.filenames = [
                 s.split() for s in f.readlines()
             ]  # [['rgb.png', 'depth.tif'], [], ...]
+            print(f"read {self.filenames}")
 
         # Tar dataset
         self.tar_obj = None

@@ -113,11 +113,16 @@ class MarigoldTrainer:
 
         # Training noise scheduler
         self.training_noise_scheduler: DDPMScheduler = DDPMScheduler.from_pretrained(
-            os.path.join(
-                base_ckpt_dir,
+#            os.path.join(
+#                base_ckpt_dir,
+#                cfg.trainer.training_noise_scheduler.pretrained_path,
+#                "scheduler",
+#            )
+             os.path.join(
+#                base_ckpt_dir,
                 cfg.trainer.training_noise_scheduler.pretrained_path,
-                "scheduler",
-            )
+#                "scheduler",
+            ), subfolder="scheduler"
         )
         self.prediction_type = self.training_noise_scheduler.config.prediction_type
         assert (

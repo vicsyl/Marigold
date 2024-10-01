@@ -33,7 +33,9 @@ dataloader:
 trainer:
   name: MarigoldTrainer
   training_noise_scheduler:
-    pretrained_path: stable-diffusion-2
+    # how to fix it to make it work with hugging face?
+    pretrained_path: stabilityai/stable-diffusion-2
+    # pretrained_path: 768-v-ema.ckpt
   init_seed: 2024  # use null to train w/o seeding
   save_period: 50
   backup_period: 2000

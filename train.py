@@ -323,7 +323,8 @@ if "__main__" == __name__:
     # -------------------- Model --------------------
     _pipeline_kwargs = cfg.pipeline.kwargs if cfg.pipeline.kwargs is not None else {}
     model = MarigoldPipeline.from_pretrained(
-        os.path.join(base_ckpt_dir, cfg.model.pretrained_path), **_pipeline_kwargs
+#        os.path.join(base_ckpt_dir, cfg.model.pretrained_path), **_pipeline_kwargs
+         cfg.model.pretrained_path, **_pipeline_kwargs
     )
 
     # -------------------- Trainer --------------------

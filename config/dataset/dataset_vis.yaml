@@ -2,8 +2,11 @@ dataset:
   vis:
   - name: hypersim
     disp_name: hypersim_vis
-    dir: hypersim/hypersim_processed_val.tar
-    filenames: data_split/hypersim/selected_vis_sample.txt
+#    dir: hypersim/hypersim_processed_val.tar
+#    filenames: data_split/hypersim/selected_vis_sample.txt
+#    ./data/?
+    dir: hypersim/test # ${BASE_DATA_DIR}/(.)
+    filenames: data/hypersim/val/filename_list_val.txt
     resize_to_hw:
     - 480
     - 640
