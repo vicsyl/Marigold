@@ -194,6 +194,10 @@ if "__main__" == __name__:
     cuda_avail = torch.cuda.is_available() and not args.no_cuda
     device = torch.device("cuda" if cuda_avail else "cpu")
     logging.info(f"device = {device}")
+    logging.info(f"current_device = {torch.cuda.current_device()}")
+    logging.info(f"device_count = {torch.cuda.device_count()}")
+    for di in range(torch.cuda.device_count()):
+        logging.info(f"device name #{di}: {torch.cuda.get_device_name(di)}")
 
     # -------------------- Snapshot of code and config --------------------
     if resume_run is None:
@@ -362,3 +366,4 @@ if "__main__" == __name__:
         trainer.train(t_end=t_end)
     except Exception as e:
         logging.exception(e)
+        logging.info("DONE")

@@ -124,6 +124,10 @@ class MarigoldTrainer:
 #                "scheduler",
             ), subfolder="scheduler"
         )
+
+        logging.info(f"self.training_noise_scheduler: {self.training_noise_scheduler}")
+        logging.info(f"type(self.training_noise_scheduler): {type(self.training_noise_scheduler)}")
+
         self.prediction_type = self.training_noise_scheduler.config.prediction_type
         assert (
             self.prediction_type == self.model.scheduler.config.prediction_type
